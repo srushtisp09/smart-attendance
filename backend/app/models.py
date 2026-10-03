@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Index, Integer, String, UniqueConstraint, text 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -57,3 +57,47 @@ class Enrollment(Base):
 
     student: Mapped[User] = relationship()
     classroom: Mapped[Classroom] = relationship(back_populates="enrollments")
+
+
+class ClassSession(Base):
+    """One actual lecture. The teacher starts it (attendance opens) and ends it (attendance closes)."""
+    __tablename__ = "class_sessions"
+    __table_args__ = (
+        # Database-level guarantee: at most ONE active (not yet ended) session per class.
+        Index("uq_one_active_session_per_class", "classroom_id", unique=True,
+              postgresql_where=text("ended_at IS NULL"), sqlite_where=text("ended_at IS NULL")),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    classroom_id: Mapped[int] = mapped_column(ForeignKey("classrooms.id"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    classroom: Mapped[Classroom] = relationship()
+    records: Mapped[list["AttendanceRecord"]] = relationship(back_populates="session")
+
+    @property
+    def is_active(self) -> bool:
+        return self.ended_at is None
+
+    @property
+    def class_name(self) -> str:
+        return self.classroom.name
+
+
+class AttendanceRecord(Base):
+    """One student marked present in one session. The location and face columns are filled in on Days 3-5."""
+    __tablename__ = "attendance_records"
+    __table_args__ = (UniqueConstraint("session_id", "student_id", name="uq_one_mark_per_session"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("class_sessions.id"), index=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    marked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    distance_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    face_match_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    session: Mapped[ClassSession] = relationship(back_populates="records")
+    student: Mapped[User] = relationship()

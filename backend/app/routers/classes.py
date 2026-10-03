@@ -8,8 +8,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import get_current_user, require_role
 from ..models import Classroom, Enrollment, Role, User
-from ..schemas import ClassCreate, ClassOut, JoinIn, UserOut
-
+from ..schemas import ClassCreate, ClassOut, ClassUpdate, JoinIn, UserOut 
 router = APIRouter(prefix="/classes", tags=["classes"])
 
 
@@ -26,6 +25,20 @@ def create_class(data: ClassCreate, db: Session = Depends(get_db),
                  teacher: User = Depends(require_role(Role.teacher))):
     classroom = Classroom(**data.model_dump(), teacher_id=teacher.id, join_code=_new_join_code(db))
     db.add(classroom)
+    db.commit()
+    db.refresh(classroom)
+    return classroom
+
+
+@router.patch("/{class_id}", response_model=ClassOut)
+def update_class(class_id: int, data: ClassUpdate, db: Session = Depends(get_db),
+                 teacher: User = Depends(require_role(Role.teacher))):
+    """Fix a class's name, geofence location or radius (e.g. replace placeholder coordinates)."""
+    classroom = db.get(Classroom, class_id)
+    if not classroom or classroom.teacher_id != teacher.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Class not found")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(classroom, field, value)
     db.commit()
     db.refresh(classroom)
     return classroom

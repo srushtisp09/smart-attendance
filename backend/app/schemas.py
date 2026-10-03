@@ -49,3 +49,32 @@ class ClassOut(BaseModel):
 
 class JoinIn(BaseModel):
     join_code: str
+class ClassUpdate(BaseModel):
+    """All fields optional: send only what you want to change."""
+    name: str | None = Field(default=None, min_length=2, max_length=150)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    radius_m: int | None = Field(default=None, ge=10, le=500)
+
+
+class SessionStart(BaseModel):
+    classroom_id: int
+
+
+class SessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    classroom_id: int
+    class_name: str
+    started_at: datetime
+    ended_at: datetime | None
+    is_active: bool
+
+
+class AttendanceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    student: UserOut
+    marked_at: datetime
+    distance_m: float | None
+    face_match_score: float | None
