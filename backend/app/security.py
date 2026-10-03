@@ -22,3 +22,19 @@ def create_access_token(user_id: int, role: str) -> str:
 
 def decode_token(token: str) -> dict:
     return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+
+
+def create_qr_token(session_id: int) -> str:
+    """Short-lived signed token the teacher's screen shows as a QR code.
+    The app re-requests a fresh one every ~15 s, so a screenshot sent to an absent friend expires fast."""
+    expire = datetime.now(timezone.utc) + timedelta(seconds=settings.QR_TOKEN_SECONDS)
+    payload = {"typ": "qr", "sid": session_id, "exp": expire}
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def decode_qr_token(token: str) -> int:
+    """Return the session id, or raise jwt.ExpiredSignatureError / jwt.PyJWTError."""
+    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    if payload.get("typ") != "qr":  # e.g. someone pasted a login token instead
+        raise jwt.InvalidTokenError("not a QR token")
+    return int(payload["sid"])

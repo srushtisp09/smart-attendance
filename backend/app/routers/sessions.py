@@ -5,10 +5,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..database import get_db
 from ..deps import get_current_user, require_role
 from ..models import AttendanceRecord, Classroom, ClassSession, Enrollment, Role, User
-from ..schemas import AttendanceOut, SessionOut, SessionStart
+from ..schemas import AttendanceOut, QrOut, SessionOut, SessionStart
+from ..security import create_qr_token
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -52,7 +54,7 @@ def start_session(data: SessionStart, db: Session = Depends(get_db),
 @router.post("/{session_id}/end", response_model=SessionOut)
 def end_session(session_id: int, db: Session = Depends(get_db),
                 teacher: User = Depends(require_role(Role.teacher))):
-    """Teacher closes attendance. After this, scans for the session will be rejected (Day 3)."""
+    """Teacher closes attendance. After this, scans for the session will be rejected."""
     session = _owned_session(db, session_id, teacher)
     if session.ended_at is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Session already ended")
@@ -60,6 +62,16 @@ def end_session(session_id: int, db: Session = Depends(get_db),
     db.commit()
     db.refresh(session)
     return session
+
+
+@router.get("/{session_id}/qr", response_model=QrOut)
+def session_qr(session_id: int, db: Session = Depends(get_db),
+               teacher: User = Depends(require_role(Role.teacher))):
+    """The teacher's app calls this every ~15 s and shows the token as a QR code."""
+    session = _owned_session(db, session_id, teacher)
+    if not session.is_active:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Session has ended")
+    return QrOut(token=create_qr_token(session.id), expires_in=settings.QR_TOKEN_SECONDS)
 
 
 @router.get("/active", response_model=list[SessionOut])
@@ -88,8 +100,7 @@ def class_sessions(class_id: int, db: Session = Depends(get_db),
 @router.get("/{session_id}/attendance", response_model=list[AttendanceOut])
 def session_attendance(session_id: int, db: Session = Depends(get_db),
                        teacher: User = Depends(require_role(Role.teacher))):
-    """Who has marked present in this session (empty until scanning is built on Day 3)."""
+    """Who has marked present in this session."""
     _owned_session(db, session_id, teacher)
     return db.scalars(select(AttendanceRecord).where(AttendanceRecord.session_id == session_id)
-                      .order_by(AttendanceRecord.marked_at)).all()
-
+                      .order_by(AttendanceRecord.marked_at)).all() 

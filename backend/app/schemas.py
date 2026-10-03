@@ -49,6 +49,8 @@ class ClassOut(BaseModel):
 
 class JoinIn(BaseModel):
     join_code: str
+
+
 class ClassUpdate(BaseModel):
     """All fields optional: send only what you want to change."""
     name: str | None = Field(default=None, min_length=2, max_length=150)
@@ -78,3 +80,22 @@ class AttendanceOut(BaseModel):
     marked_at: datetime
     distance_m: float | None
     face_match_score: float | None
+
+
+class QrOut(BaseModel):
+    token: str
+    expires_in: int  # seconds until this QR stops working
+
+
+class ScanIn(BaseModel):
+    qr_token: str
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy_m: float = Field(ge=0)  # the phone's own estimate of its GPS error, in metres
+
+
+class ScanOut(BaseModel):
+    session_id: int
+    class_name: str
+    marked_at: datetime
+    distance_m: float
