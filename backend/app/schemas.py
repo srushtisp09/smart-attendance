@@ -99,3 +99,14 @@ class ScanOut(BaseModel):
     class_name: str
     marked_at: datetime
     distance_m: float
+    face_match_score: float
+
+
+class FaceStatus(BaseModel):
+    enrolled: bool
+
+
+class FaceCheckOut(BaseModel):
+    score: float      # cosine similarity with your enrolled face (1.0 = identical)
+    match: bool
+    threshold: float 

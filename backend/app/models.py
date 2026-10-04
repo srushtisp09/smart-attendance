@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Index, Integer, String, UniqueConstraint, text 
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Index, Integer, LargeBinary, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -101,3 +101,15 @@ class AttendanceRecord(Base):
 
     session: Mapped[ClassSession] = relationship(back_populates="records")
     student: Mapped[User] = relationship()
+
+
+class FaceEmbedding(Base):
+    """A student's face as 512 numbers (float32). The photo itself is never stored."""
+    __tablename__ = "face_embeddings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    embedding: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped[User] = relationship() 

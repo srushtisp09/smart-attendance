@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import Base, engine
-from .routers import attendance, auth, classes, sessions
+from .routers import attendance, auth, classes, face, sessions
 
 
 @asynccontextmanager
@@ -24,6 +24,7 @@ app.include_router(auth.router)
 app.include_router(classes.router)
 app.include_router(sessions.router)
 app.include_router(attendance.router)
+app.include_router(face.router)
 
 
 @app.get("/health")
