@@ -109,4 +109,35 @@ class FaceStatus(BaseModel):
 class FaceCheckOut(BaseModel):
     score: float      # cosine similarity with your enrolled face (1.0 = identical)
     match: bool
-    threshold: float 
+    threshold: float
+
+
+class BindIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=100)   # random ID the app generates once and keeps
+    device_name: str | None = Field(default=None, max_length=100)
+
+
+class DeviceStatus(BaseModel):
+    bound: bool
+    device_name: str | None = None
+    bound_at: datetime | None = None
+
+
+class EventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    kind: str
+    outcome: str
+    student: UserOut
+    device_id: str | None
+    distance_m: float | None
+    face_score: float | None
+    created_at: datetime
+
+
+class FlagOut(BaseModel):
+    student_id: int
+    student_name: str
+    flag: str
+    severity: str   # "high" | "medium" | "low"
+    detail: str 

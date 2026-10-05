@@ -112,4 +112,38 @@ class FaceEmbedding(Base):
     embedding: Mapped[bytes] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    user: Mapped[User] = relationship() 
+    user: Mapped[User] = relationship()
+
+
+class DeviceBinding(Base):
+    """One phone per student, and one student per phone. Stops one handset marking attendance for several people."""
+    __tablename__ = "device_bindings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    device_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    device_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped[User] = relationship()
+
+
+class SecurityEvent(Base):
+    """Audit log: every scan attempt (pass or fail) and every device-binding conflict.
+    Also the training data for fraud detection later."""
+    __tablename__ = "security_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20))        # "scan" | "device_bind"
+    outcome: Mapped[str] = mapped_column(String(40))     # "success", "face_mismatch", "outside_geofence", ...
+    student_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("class_sessions.id"), nullable=True, index=True)
+    device_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    accuracy_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    distance_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    face_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    student: Mapped[User] = relationship() 

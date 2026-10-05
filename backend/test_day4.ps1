@@ -69,6 +69,10 @@ Write-Host "Logged in. Student id = $studentId" -ForegroundColor Cyan
 
 # Start clean: teacher resets the student's face (404 just means nothing was enrolled)
 Call "DELETE" "/face/$studentId" $T $null | Out-Null
+# Since Day 5, scans must come from the student's registered phone. Register a test phone.
+Call "DELETE" "/device/$studentId" $T $null | Out-Null
+$deviceId = "powershell-test-phone-1"
+Call "POST" "/device/bind" $S @{ device_id = $deviceId; device_name = "PowerShell test" } | Out-Null
 
 Write-Host "--- Face enrollment ---" -ForegroundColor Cyan
 Show "enroll with no-face photo"  "400" (FormPost "/face/enroll" $S @{} "noface.jpg")
@@ -87,7 +91,7 @@ foreach ($sess in @((Call "GET" "/sessions/active" $T $null).Data)) {
 }
 $sid = (Call "POST" "/sessions/start" $T @{ classroom_id = $cls.id }).Data.id
 $token = (Call "GET" "/sessions/$sid/qr" $T $null).Data.token
-$fields = @{ qr_token = $token; latitude = $cls.latitude; longitude = $cls.longitude; accuracy_m = 10 }
+$fields = @{ qr_token = $token; latitude = $cls.latitude; longitude = $cls.longitude; accuracy_m = 10; device_id = $deviceId }
 
 Show "scan with other.jpg"        "403" (FormPost "/attendance/scan" $S $fields "other.jpg")
 Show "scan with no-face photo"    "400" (FormPost "/attendance/scan" $S $fields "noface.jpg")

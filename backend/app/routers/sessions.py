@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -5,11 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..config import settings
 from ..database import get_db
 from ..deps import get_current_user, require_role
-from ..models import AttendanceRecord, Classroom, ClassSession, Enrollment, Role, User
-from ..schemas import AttendanceOut, QrOut, SessionOut, SessionStart
+from ..models import AttendanceRecord, Classroom, ClassSession, Enrollment, Role, SecurityEvent, User
+from ..config import settings
+from ..schemas import AttendanceOut, EventOut, FlagOut, QrOut, SessionOut, SessionStart
 from ..security import create_qr_token
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -54,7 +55,7 @@ def start_session(data: SessionStart, db: Session = Depends(get_db),
 @router.post("/{session_id}/end", response_model=SessionOut)
 def end_session(session_id: int, db: Session = Depends(get_db),
                 teacher: User = Depends(require_role(Role.teacher))):
-    """Teacher closes attendance. After this, scans for the session will be rejected."""
+    """Teacher closes attendance. After this, scans for the session will be rejected (Day 3)."""
     session = _owned_session(db, session_id, teacher)
     if session.ended_at is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Session already ended")
@@ -100,7 +101,61 @@ def class_sessions(class_id: int, db: Session = Depends(get_db),
 @router.get("/{session_id}/attendance", response_model=list[AttendanceOut])
 def session_attendance(session_id: int, db: Session = Depends(get_db),
                        teacher: User = Depends(require_role(Role.teacher))):
-    """Who has marked present in this session."""
+    """Who has marked present in this session (empty until scanning is built on Day 3)."""
     _owned_session(db, session_id, teacher)
     return db.scalars(select(AttendanceRecord).where(AttendanceRecord.session_id == session_id)
-                      .order_by(AttendanceRecord.marked_at)).all() 
+                      .order_by(AttendanceRecord.marked_at)).all()
+
+
+@router.get("/{session_id}/events", response_model=list[EventOut])
+def session_events(session_id: int, db: Session = Depends(get_db),
+                   teacher: User = Depends(require_role(Role.teacher))):
+    """Audit log: every scan attempt for this session, passed or failed, oldest first."""
+    _owned_session(db, session_id, teacher)
+    return db.scalars(select(SecurityEvent).where(SecurityEvent.session_id == session_id)
+                      .order_by(SecurityEvent.created_at, SecurityEvent.id)).all()
+
+
+@router.get("/{session_id}/flags", response_model=list[FlagOut])
+def session_flags(session_id: int, db: Session = Depends(get_db),
+                  teacher: User = Depends(require_role(Role.teacher))):
+    """Rule-based fraud flags for a session, so the teacher knows who to look at.
+    (An ML anomaly detector can be layered on the same event log later.)"""
+    _owned_session(db, session_id, teacher)
+    events = db.scalars(select(SecurityEvent).where(SecurityEvent.session_id == session_id)
+                        .order_by(SecurityEvent.id)).all()
+    by_student = defaultdict(list)
+    for e in events:
+        by_student[e.student_id].append(e)
+
+    flags: list[FlagOut] = []
+    for student_id, evs in by_student.items():
+        name = evs[0].student.name
+
+        def add(flag, severity, detail):
+            flags.append(FlagOut(student_id=student_id, student_name=name, flag=flag,
+                                 severity=severity, detail=detail))
+
+        face_fail = [e for e in evs if e.outcome == "face_mismatch"]
+        if face_fail:
+            best = max(e.face_score for e in face_fail if e.face_score is not None)
+            add("face_mismatch", "high",
+                f"{len(face_fail)} scan(s) where the selfie did not match this account (best score {best:.2f})")
+        dev_fail = [e for e in evs if e.outcome in ("device_mismatch", "device_not_bound")]
+        if dev_fail:
+            add("unregistered_device", "high", f"{len(dev_fail)} scan(s) from a phone not registered to this student")
+        far = [e for e in evs if e.outcome == "outside_geofence"]
+        if far:
+            closest = min(e.distance_m for e in far if e.distance_m is not None)
+            add("outside_classroom", "medium", f"{len(far)} scan(s) from outside the classroom (closest {closest:.0f} m)")
+        failures = [e for e in evs if e.outcome not in ("success", "duplicate")]
+        if len(failures) >= 3:
+            add("repeated_failures", "medium", f"{len(failures)} failed scan attempts in this session")
+        weak = [e for e in evs if e.outcome == "success" and e.face_score is not None
+                and e.face_score < settings.FACE_MATCH_THRESHOLD + 0.05]
+        if weak:
+            add("borderline_face_match", "low",
+                f"Accepted with a weak face score ({weak[0].face_score:.2f}); worth a quick look")
+
+    order = {"high": 0, "medium": 1, "low": 2}
+    return sorted(flags, key=lambda f: (order[f.severity], f.student_name)) 

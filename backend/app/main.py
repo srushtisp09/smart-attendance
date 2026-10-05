@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import Base, engine
-from .routers import attendance, auth, classes, face, sessions
+from .routers import attendance, auth, classes, device, face, sessions
 
 
 @asynccontextmanager
@@ -25,8 +25,9 @@ app.include_router(classes.router)
 app.include_router(sessions.router)
 app.include_router(attendance.router)
 app.include_router(face.router)
+app.include_router(device.router)
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok"} 
